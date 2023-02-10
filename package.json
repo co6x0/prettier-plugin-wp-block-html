@@ -1,0 +1,24 @@
+{
+  "name": "prettier-plugin-wp-block-html",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
+    "prettier": "node ./test/prettier.js",
+    "format": "prettier --write ./test/test.html --plugin ./dist",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^18.11.18",
+    "@types/prettier": "^2.7.2",
+    "esbuild": "^0.17.5",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "prettier": "^2.8.3"
+  }
+}
