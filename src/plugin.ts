@@ -9,9 +9,10 @@ import type {
   AstPath,
   ParserOptions,
 } from "prettier";
+import GenAstPath from "./common/AstPath";
 
 // const HtmlPrinter = require("./printer/index.js");
-const { group, indent, join, line, softline, breakParent } = builders;
+const { group, indent, join, line, softline, hardline, breakParent } = builders;
 
 // https://prettier.io/docs/en/plugins.html
 export const languages: Partial<SupportLanguage>[] = [
@@ -22,98 +23,92 @@ export const languages: Partial<SupportLanguage>[] = [
 ];
 
 const HtmlParser = PrettierCoreParsers.html;
+let flagInMultilineWpBlock: boolean = false;
+let pendingCustomNode: any;
+
 const traverse = (nodes: any[]): any[] => {
-  return nodes.reduce((acc: any, node: any) => {
+  return nodes.reduce((prev: any, node: any) => {
+    if (flagInMultilineWpBlock && node.type !== "comment") {
+      if (node.children === undefined) {
+        pendingCustomNode.root.children.push(node);
+        return [...prev];
+      } else {
+        // const customNode = node;
+        // customNode.children = traverse(node.children);
+        // pendingCustomNode.children.push(customNode);
+        pendingCustomNode.root.children.push(node);
+        return [...prev];
+      }
+    }
+
     if (node.type === "comment") {
       const trimmedValue = node.value.trim() as string;
       const hasWpPrefix =
-        trimmedValue.startsWith("wp:") || trimmedValue.startsWith("/wp:");
-      if (!hasWpPrefix) return [...acc, node];
+        trimmedValue.startsWith("wp:") ||
+        trimmedValue.startsWith("/wp:") ||
+        trimmedValue.startsWith("/ wp:");
+
+      if (flagInMultilineWpBlock && !hasWpPrefix) {
+        pendingCustomNode.root.children.push(node);
+        return [...prev];
+      }
+      if (!hasWpPrefix) return [...prev, node];
 
       const isSingleLine = trimmedValue.endsWith("/");
       const customNode = node;
 
+      // プロパティを追加する場合は単行で完結するimgタグ等のASTを参考に
       if (isSingleLine) {
-        customNode.value = `<!-- ${trimmedValue}-->`;
-        customNode.type = "comment";
-        customNode.name = "wp";
-        customNode.children = [];
-        customNode.attrs = [];
-        customNode.startSourceSpan = node.sourceSpan;
-        customNode.endSourceSpan = null;
-        customNode.i18n = null;
-        customNode.namespace = null;
-        customNode.hasExplicitNamespace = false;
-        customNode.tagDefinition = {
-          closedByChildren: {},
-          closedByParent: true,
-          canSelfClose: false,
-          isVoid: true,
-          implicitNamespacePrefix: null,
-          contentType: 2,
-          ignoreFirstLf: false,
-        };
+        const removedSlashValue = trimmedValue.slice(0, -1).trimEnd();
+        customNode.value = removedSlashValue;
+        customNode.type = "wpblock";
+        customNode.name = "wpblock";
 
-        //   nameSpan: s {
-        //     start: n { file: [D], offset: 307, line: 14, col: 1 },
-        //     end: n { file: [D], offset: 310, line: 14, col: 4 },
-        //     details: null
-        //   },
-        return [...acc, customNode];
+        if (flagInMultilineWpBlock) {
+          pendingCustomNode.root.children.push(customNode);
+          return [...prev];
+        } else {
+          return [...prev, customNode];
+        }
       }
 
-      customNode.value = `<!-- ${trimmedValue} -->`;
-      customNode.type = "comment";
-      // customNode.sourceSpan = {
-      //   start: node.sourceSpan,
-      //   end: null,
-      //   details: null,
-      // };
-      // customNode.name = "wp"
-      // customNode.attr = []
-      // customNode.children = node.children
-      // customNode.i18n = null,
-      // customNode.type = "element",
-      // customNode.namespace = null,
-      // customNode.hasExplicitNamespace = false,
-      // tagDefinition: u {
-      //   closedByChildren: {},
-      //   closedByParent: false,
-      //   canSelfClose: false,
-      //   isVoid: false,
-      //   implicitNamespacePrefix: null,
-      //   contentType: 2,
-      //   ignoreFirstLf: false
-      // }
-      // sourceSpan: s {
-      //   start: n { file: [D], offset: 313, line: 15, col: 0 },
-      //   end: n { file: [D], offset: 382, line: 19, col: 6 },
-      //   details: null
-      // },
-      // startSourceSpan: s {
-      //   start: n { file: [D], offset: 313, line: 15, col: 0 },
-      //   end: n { file: [D], offset: 318, line: 15, col: 5 },
-      //   details: null
-      // },
-      // endSourceSpan: s {
-      //   start: n { file: [D], offset: 376, line: 19, col: 0 },
-      //   end: n { file: [D], offset: 382, line: 19, col: 6 },
-      //   details: null
-      // },
-      // nameSpan: s {
-      //   start: n { file: [D], offset: 314, line: 15, col: 1 },
-      //   end: n { file: [D], offset: 317, line: 15, col: 4 },
-      //   details: null
-      // },
+      const isEndWpBlock =
+        trimmedValue.startsWith("/wp:") || trimmedValue.startsWith("/ wp:");
+      if (isEndWpBlock) {
+        if (flagInMultilineWpBlock) {
+          flagInMultilineWpBlock = false;
+          return [...prev, pendingCustomNode];
+        } else {
+          return [...prev, node];
+        }
+      }
 
-      return [...acc, customNode];
+      flagInMultilineWpBlock = true;
+      customNode.value = trimmedValue;
+      customNode.type = "wpblock";
+      customNode.name = "wpblock";
+      customNode.root = {
+        type: "element",
+        name: "div",
+        children: [],
+        attrs: [],
+        sourceSpan: customNode.sourceSpan,
+        startSourceSpan: customNode.sourceSpan,
+        endSourceSpan: customNode.sourceSpan,
+        nameSpan: customNode.sourceSpan,
+        cssDisplay: "block",
+      };
+
+      pendingCustomNode = customNode;
+
+      return [...prev];
     }
 
-    if (node.children === undefined) return [...acc, node];
+    if (node.children === undefined) return [...prev, node];
 
     const customNode = node;
     customNode.children = traverse(node.children);
-    return [...acc, customNode];
+    return [...prev, customNode];
   }, []);
 };
 
@@ -149,11 +144,12 @@ let htmlPrinterBuiltInPrettier: CorrectPrinterType;
 let isInWpBlock: boolean = false;
 let pendingDocs: Doc[] = [];
 
+// 以下のファイルがexportしているメソッドを持たせる
+// Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
 export const printers: Record<string, CorrectPrinterType> = {
   "custom-html": {
-    // 以下のファイルがexportしているメソッドを持たせる
-    // Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
     // ここら辺の型定義が崩壊しているが、preprocessの方もoptions.plugins経由でアクセスできるようで、かなりハック的ではあるものの一応動きはする
+    // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
     preprocess: (ast, options) => {
       // @ts-ignore
       htmlPrinterBuiltInPrettier = options.plugins.find(
@@ -164,12 +160,32 @@ export const printers: Record<string, CorrectPrinterType> = {
       return htmlPrinterBuiltInPrettier.preprocess(ast, options);
     },
     print: (path, options, print) => {
-      const defaultPrint = htmlPrinterBuiltInPrettier.print(
-        path,
-        options,
-        print
-      );
+      const defaultPrint = () =>
+        htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
+
+      if (node.type === "wpblock") {
+        if (node.root === undefined) {
+          return `<!-- ${node.value} /-->`;
+        }
+        const astPath = new GenAstPath(node.root);
+
+        const customPrint = (astPath: AstPath) => {
+          return htmlPrinterBuiltInPrettier.print(
+            astPath,
+            options,
+            customPrint
+          );
+        };
+        const childrenDocs = customPrint(astPath);
+
+        return group([
+          `<!-- ${node.value} -->`,
+          indent([softline, childrenDocs]),
+          softline,
+          `<!-- /${node.value} -->`,
+        ]);
+      }
 
       const hasWpPrefix = String(node.value).includes("wp:");
       const isSingleLineBlock = String(node.value).endsWith("/-->");
@@ -180,35 +196,22 @@ export const printers: Record<string, CorrectPrinterType> = {
         isInWpBlock = true;
         if (isWpEndBlock) {
           isInWpBlock = false;
-          return defaultPrint;
+          return defaultPrint();
         }
 
-        return group(["  ", group([defaultPrint]), breakParent]);
+        return defaultPrint();
         // pendingDocs.push(defaultPrint);
         // return "";
       }
 
       if (isInWpBlock) {
-        if (node.type === "text") {
-          return defaultPrint;
-        }
-
-        if (node.type === "comment") {
-          return group(["  ", defaultPrint]);
-        }
-
-        if (node.type === "element") {
-          console.log("ELEMENT", node);
-          return group(["  ", indent(["", defaultPrint])]);
-        }
-
-        return defaultPrint;
+        return defaultPrint();
         // console.log(node.type, node.value, node);
         // pendingDocs.push(defaultPrint);
         // return "";
       }
 
-      return defaultPrint;
+      return defaultPrint();
     },
     insertPragma: (text) => {
       if (htmlPrinterBuiltInPrettier.insertPragma === undefined) return "";

@@ -2,6 +2,7 @@
   "name": "prettier-plugin-wp-block-html",
   "version": "1.0.0",
   "description": "",
+  "packageManager": "npm@9.4.0",
   "main": "index.js",
   "scripts": {
     "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",

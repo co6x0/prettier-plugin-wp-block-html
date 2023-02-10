@@ -14,17 +14,14 @@ const code = `
 World.</p>
 <!-- This is Comment! -->
 <img src="./foo.jpg" alt="test image">
-<!-- wp:site-title {"level":2} /-->
+<!-- wp:site-title {"level":2}/ -->
+<p>Paragraph</p>
+<img src="./foo.jpg" alt="test image">
 </div>
 <div>
 <!-- wp:foo-bar -->
 <p>P in wp:1</p>
-<!-- wp:foo-bar -->
-<div>
-<p>P in wp:2</p>
-</div>
-<!-- /wp:foo-bar -->
-<!-- /wp:foo-bar -->
+<!-- / wp:foo-bar -->
 </div>
 </body>
 </html>
