@@ -2,7 +2,7 @@
 
 Prettier plugin for HTML in WordPress Block Theme.
 
-## :warn: Attention
+## ⚠️ Attention
 
 This plugin does not work properly. This repository is for verification purposes only.
 
