@@ -11,10 +11,13 @@ World.</p>
 
 <section>
 <!-- wp:group -->
+<p>P in wp:1</p>
 <div>
+<!-- comment -->
+<p>P in wp:2</p>
   <!-- wp:group {"align":"full","style":{"spacing":{"padding":{"top":"2em","right":"2em","bottom":"2em","left":"2em"}}},"backgroundColor":"vivid-cyan-blue"} -->
   <!-- wp:heading {"level":3,"style":{"color":{"text":"#ff7e7e"}}} -->
-  <p>P in wp:1</p>
+  <p>P in wp:3</p>
   <!-- /wp:heading -->
   <!-- /wp:group -->
 </div>
