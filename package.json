@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
+    "build-v2": "esbuild ./src/v2/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
     "prettier": "node ./test/prettier.js",
     "format": "prettier --write ./test/test.html --plugin ./dist",
     "test": "echo \"Error: no test specified\" && exit 1"
