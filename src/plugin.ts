@@ -10,6 +10,8 @@ import type {
   ParserOptions,
 } from "prettier";
 import GenAstPath from "./common/AstPath";
+import { getTextsInWpBlock } from "./getTextsInWpBlock";
+import { traverseAstIncludedWpBlock } from "./traverseAstIncludedWpBlock";
 
 // const HtmlPrinter = require("./printer/index.js");
 const { group, indent, join, line, softline, hardline, breakParent } = builders;
@@ -23,94 +25,6 @@ export const languages: Partial<SupportLanguage>[] = [
 ];
 
 const HtmlParser = PrettierCoreParsers.html;
-let flagInMultilineWpBlock: boolean = false;
-let pendingCustomNode: any;
-
-const traverse = (nodes: any[]): any[] => {
-  return nodes.reduce((prev: any, node: any) => {
-    if (flagInMultilineWpBlock && node.type !== "comment") {
-      if (node.children === undefined) {
-        pendingCustomNode.root.children.push(node);
-        return [...prev];
-      } else {
-        // const customNode = node;
-        // customNode.children = traverse(node.children);
-        // pendingCustomNode.children.push(customNode);
-        pendingCustomNode.root.children.push(node);
-        return [...prev];
-      }
-    }
-
-    if (node.type === "comment") {
-      const trimmedValue = node.value.trim() as string;
-      const hasWpPrefix =
-        trimmedValue.startsWith("wp:") ||
-        trimmedValue.startsWith("/wp:") ||
-        trimmedValue.startsWith("/ wp:");
-
-      if (flagInMultilineWpBlock && !hasWpPrefix) {
-        pendingCustomNode.root.children.push(node);
-        return [...prev];
-      }
-      if (!hasWpPrefix) return [...prev, node];
-
-      const isSingleLine = trimmedValue.endsWith("/");
-      const customNode = node;
-
-      // プロパティを追加する場合は単行で完結するimgタグ等のASTを参考に
-      if (isSingleLine) {
-        const removedSlashValue = trimmedValue.slice(0, -1).trimEnd();
-        customNode.value = removedSlashValue;
-        customNode.type = "wpblock";
-        customNode.name = "wpblock";
-
-        if (flagInMultilineWpBlock) {
-          pendingCustomNode.root.children.push(customNode);
-          return [...prev];
-        } else {
-          return [...prev, customNode];
-        }
-      }
-
-      const isEndWpBlock =
-        trimmedValue.startsWith("/wp:") || trimmedValue.startsWith("/ wp:");
-      if (isEndWpBlock) {
-        if (flagInMultilineWpBlock) {
-          flagInMultilineWpBlock = false;
-          return [...prev, pendingCustomNode];
-        } else {
-          return [...prev, node];
-        }
-      }
-
-      flagInMultilineWpBlock = true;
-      customNode.value = trimmedValue;
-      customNode.type = "wpblock";
-      customNode.name = "wpblock";
-      customNode.root = {
-        type: "element",
-        name: "div",
-        children: [],
-        attrs: [],
-        sourceSpan: customNode.sourceSpan,
-        startSourceSpan: customNode.sourceSpan,
-        endSourceSpan: customNode.sourceSpan,
-        nameSpan: customNode.sourceSpan,
-        cssDisplay: "block",
-      };
-
-      pendingCustomNode = customNode;
-
-      return [...prev];
-    }
-
-    if (node.children === undefined) return [...prev, node];
-
-    const customNode = node;
-    customNode.children = traverse(node.children);
-    return [...prev, customNode];
-  }, []);
-};
 
 let astInPreprocess: any;
 export const parsers: Record<string, Parser> = {
@@ -124,7 +38,14 @@ export const parsers: Record<string, Parser> = {
       astInPreprocess.type = ast.type;
       astInPreprocess.sourceSpan = { ...ast.sourceSpan };
 
-      const result = traverse(astChildren);
+      // parseの段階でwpブロックを見つけ出し、その範囲のtextだけをparseする。そして、それをcustomNode.rootに加える
+      const textsInWpBlock = getTextsInWpBlock(text);
+      const astsInsideWpBlock = textsInWpBlock.map((text) => {
+        if (!text) return;
+        return HtmlParser.parse(text, { html: HtmlParser }, options);
+      });
+
+      const result = traverseAstIncludedWpBlock(astChildren, astsInsideWpBlock);
       astInPreprocess.children = result;
 
       return text;
@@ -168,9 +89,11 @@ export const printers: Record<string, CorrectPrinterType> = {
         if (node.root === undefined) {
           return `<!-- ${node.value} /-->`;
         }
-        const astPath = new GenAstPath(node.root);
 
+        const astPath = new GenAstPath(node.root);
         const customPrint = (astPath: AstPath) => {
+          const node = astPath.getValue();
+          console.log(node.type, astPath);
           return htmlPrinterBuiltInPrettier.print(
             astPath,
             options,

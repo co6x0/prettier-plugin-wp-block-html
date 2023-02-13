@@ -193,25 +193,89 @@ var AstPath = class {
 };
 var AstPath_default = AstPath;
 
-// src/plugin.ts
-var { group, indent, join, line, softline, hardline, breakParent } = import_doc.builders;
-var languages = [
-  {
-    name: "custom-html",
-    parsers: ["custom-html"]
-  }
-];
-var HtmlParser = import_parser_html.parsers.html;
+// src/getTextsInWpBlock.ts
+var getTextsInWpBlock = (text) => {
+  const wpBlockStartLines = [
+    ...text.matchAll(RegExp("(<!--)\\s*(wp:).*[^\\/][^\\/](-->)", "g"))
+  ];
+  const textsInWpBlock = wpBlockStartLines.map((match) => {
+    if (!match.index || !match.input)
+      return;
+    const input = match.input;
+    const index = match.index;
+    const indexOfWpPrefixEnd = input.indexOf("wp:", index) + 3;
+    if (indexOfWpPrefixEnd === -1)
+      throw new Error("indexOfWpPrefixEnd is empty");
+    const indexOfWpBlockName = input.indexOf(" ", indexOfWpPrefixEnd);
+    if (indexOfWpBlockName === -1)
+      throw new Error("indexOfWpBlockName is empty");
+    const wpBlockName = input.slice(indexOfWpPrefixEnd, indexOfWpBlockName);
+    const closeBlocks = [
+      ...input.matchAll(
+        RegExp(`(<!--)\\s*\\/\\s*(wp:${wpBlockName}).*(-->)`, "g")
+      )
+    ];
+    const sameNameBlocks = [
+      ...input.matchAll(RegExp(`(<!--)\\s*(wp:${wpBlockName}).*(-->)`, "g"))
+    ];
+    const indexOfWpStartBlockEnd = input.indexOf("-->", index) + 3;
+    if (closeBlocks.length === 0) {
+      throw new Error(`wp:${wpBlockName} closing block is not found`);
+    }
+    if (closeBlocks.length === 1) {
+      const wpBlockInnerText2 = input.slice(
+        indexOfWpStartBlockEnd,
+        closeBlocks[0].index
+      );
+      return wpBlockInnerText2;
+    }
+    let mostNearCloseBlockIndex = 0;
+    const mostNearCloseBlock = closeBlocks.reduce(
+      (prev, current, currentIndex) => {
+        if (!current.index || !prev.index) {
+          mostNearCloseBlockIndex = currentIndex;
+          return current;
+        }
+        if (index > current.index || index > prev.index) {
+          mostNearCloseBlockIndex = currentIndex;
+          return current;
+        }
+        if (prev.index - index > current.index - index) {
+          mostNearCloseBlockIndex = currentIndex;
+          return current;
+        }
+        if (prev.index - index < current.index - index) {
+          return prev;
+        }
+        mostNearCloseBlockIndex = currentIndex;
+        return current;
+      }
+    );
+    const blocksBetweenCloseBlock = sameNameBlocks.filter((block) => {
+      if (!block.index || !mostNearCloseBlock.index)
+        return false;
+      if (index < block.index && block.index < mostNearCloseBlock.index)
+        return true;
+    });
+    const thisCloseBlock = closeBlocks[mostNearCloseBlockIndex + blocksBetweenCloseBlock.length];
+    const wpBlockInnerText = input.slice(
+      indexOfWpStartBlockEnd,
+      thisCloseBlock.index
+    );
+    return wpBlockInnerText;
+  });
+  return textsInWpBlock;
+};
+
+// src/traverseAstIncludedWpBlock.ts
 var flagInMultilineWpBlock = false;
-var pendingCustomNode;
-var traverse = (nodes) => {
+var multilineWpBlockCount = 0;
+var traverse = (nodes, astsInsideWpBlock) => {
   return nodes.reduce((prev, node) => {
     if (flagInMultilineWpBlock && node.type !== "comment") {
       if (node.children === void 0) {
-        pendingCustomNode.root.children.push(node);
         return [...prev];
       } else {
-        pendingCustomNode.root.children.push(node);
         return [...prev];
       }
     }
@@ -219,7 +283,6 @@ var traverse = (nodes) => {
       const trimmedValue = node.value.trim();
       const hasWpPrefix = trimmedValue.startsWith("wp:") || trimmedValue.startsWith("/wp:") || trimmedValue.startsWith("/ wp:");
       if (flagInMultilineWpBlock && !hasWpPrefix) {
-        pendingCustomNode.root.children.push(node);
         return [...prev];
       }
       if (!hasWpPrefix)
@@ -232,7 +295,6 @@ var traverse = (nodes) => {
         customNode2.type = "wpblock";
         customNode2.name = "wpblock";
         if (flagInMultilineWpBlock) {
-          pendingCustomNode.root.children.push(customNode2);
           return [...prev];
         } else {
           return [...prev, customNode2];
@@ -242,36 +304,39 @@ var traverse = (nodes) => {
       if (isEndWpBlock) {
         if (flagInMultilineWpBlock) {
           flagInMultilineWpBlock = false;
-          return [...prev, pendingCustomNode];
+          return [...prev];
         } else {
           return [...prev, node];
         }
       }
-      flagInMultilineWpBlock = true;
+      if (!astsInsideWpBlock)
+        return [...prev];
       customNode2.value = trimmedValue;
       customNode2.type = "wpblock";
       customNode2.name = "wpblock";
-      customNode2.root = {
-        type: "element",
-        name: "div",
-        children: [],
-        attrs: [],
-        sourceSpan: customNode2.sourceSpan,
-        startSourceSpan: customNode2.sourceSpan,
-        endSourceSpan: customNode2.sourceSpan,
-        nameSpan: customNode2.sourceSpan,
-        cssDisplay: "block"
-      };
-      pendingCustomNode = customNode2;
-      return [...prev];
+      customNode2.root = astsInsideWpBlock[multilineWpBlockCount];
+      flagInMultilineWpBlock = true;
+      multilineWpBlockCount++;
+      return [...prev, customNode2];
     }
     if (node.children === void 0)
       return [...prev, node];
     const customNode = node;
-    customNode.children = traverse(node.children);
+    customNode.children = traverse(node.children, astsInsideWpBlock);
     return [...prev, customNode];
   }, []);
 };
+var traverseAstIncludedWpBlock = traverse;
+
+// src/plugin.ts
+var { group, indent, join, line, softline, hardline, breakParent } = import_doc.builders;
+var languages = [
+  {
+    name: "custom-html",
+    parsers: ["custom-html"]
+  }
+];
+var HtmlParser = import_parser_html.parsers.html;
 var astInPreprocess;
 var parsers = {
   "custom-html": {
@@ -283,7 +348,13 @@ var parsers = {
       astInPreprocess = ast;
       astInPreprocess.type = ast.type;
       astInPreprocess.sourceSpan = { ...ast.sourceSpan };
-      const result = traverse(astChildren);
+      const textsInWpBlock = getTextsInWpBlock(text);
+      const astsInsideWpBlock = textsInWpBlock.map((text2) => {
+        if (!text2)
+          return;
+        return HtmlParser.parse(text2, { html: HtmlParser }, options2);
+      });
+      const result = traverseAstIncludedWpBlock(astChildren, astsInsideWpBlock);
       astInPreprocess.children = result;
       return text;
     },
@@ -316,6 +387,8 @@ var printers = {
         }
         const astPath = new AstPath_default(node.root);
         const customPrint = (astPath2) => {
+          const node2 = astPath2.getValue();
+          console.log(node2.type, astPath2);
           return htmlPrinterBuiltInPrettier.print(
             astPath2,
             options2,
