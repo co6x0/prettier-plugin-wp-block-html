@@ -7,16 +7,13 @@ import type {
   AST,
   Doc,
   AstPath,
-  ParserOptions,
 } from "prettier";
 import GenAstPath from "./common/AstPath";
 import { getTextsInWpBlock } from "./getTextsInWpBlock";
 import { traverseAstIncludedWpBlock } from "./traverseAstIncludedWpBlock";
 
-// const HtmlPrinter = require("./printer/index.js");
-const { group, indent, join, line, softline, hardline, breakParent } = builders;
+const { group, indent, line, softline, hardline, breakParent } = builders;
 
-// https://prettier.io/docs/en/plugins.html
 export const languages: Partial<SupportLanguage>[] = [
   {
     name: "custom-html",
@@ -64,12 +61,13 @@ type CorrectPrinterType = Printer & {
 let htmlPrinterBuiltInPrettier: CorrectPrinterType;
 let isInWpBlock: boolean = false;
 let pendingDocs: Doc[] = [];
+let preprocessOptions: object;
 
 // 以下のファイルがexportしているメソッドを持たせる
 // Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
 export const printers: Record<string, CorrectPrinterType> = {
   "custom-html": {
-    // ここら辺の型定義が崩壊しているが、preprocessの方もoptions.plugins経由でアクセスできるようで、かなりハック的ではあるものの一応動きはする
+    // 全体的に型定義が雑になっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、かなりハック的ではあるものの一応動きはする
     // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
     preprocess: (ast, options) => {
       // @ts-ignore
@@ -77,6 +75,7 @@ export const printers: Record<string, CorrectPrinterType> = {
         // @ts-ignore
         (plugin) => plugin.printers && plugin.printers.html
       ).printers.html;
+      preprocessOptions = options;
       if (htmlPrinterBuiltInPrettier.preprocess === undefined) return ast;
       return htmlPrinterBuiltInPrettier.preprocess(ast, options);
     },
@@ -90,17 +89,38 @@ export const printers: Record<string, CorrectPrinterType> = {
           return `<!-- ${node.value} /-->`;
         }
 
-        const astPath = new GenAstPath(node.root);
+        const adjustAst = htmlPrinterBuiltInPrettier.preprocess(
+          node.root,
+          preprocessOptions
+        );
+        const astPath = new GenAstPath(adjustAst);
+
+        // 実質HTMLPrinterの再発明になるので、この設計方針は間違えているかもしれない（ここだけではなくコード全体に対して）
+        // 本プラグインの前提条件は変わってしまうが、PrettierのHTMLPrinterのコードをフォークしてカスタマイズした方が良さそうなのは確か
         const customPrint = (astPath: AstPath) => {
-          const node = astPath.getValue();
-          console.log(node.type, astPath);
-          return htmlPrinterBuiltInPrettier.print(
-            astPath,
-            options,
-            customPrint
-          );
+          const childNode = astPath.map((childPath) => {
+            const node = childPath.getValue() as any;
+
+            if (node.type === "element") {
+              return group([
+                `<${node.name}>`,
+                breakParent,
+                indent([line, group(childPath.call(customPrint, "children"))]),
+                line,
+                `</${node.name}>`,
+              ]);
+            }
+            if (node.children && node.children.length !== 0) {
+              return group(childPath.call(customPrint, "children"));
+            }
+            if (node.type === "comment") {
+              return group([line, "<!--", node.value, "-->", hardline]);
+            }
+            return group([node.value]);
+          });
+          return childNode;
         };
-        const childrenDocs = customPrint(astPath);
+        const childrenDocs = astPath.call(customPrint, "children");
 
         return group([
           `<!-- ${node.value} -->`,
@@ -108,30 +128,6 @@ export const printers: Record<string, CorrectPrinterType> = {
           softline,
           `<!-- /${node.value} -->`,
         ]);
-      }
-
-      const hasWpPrefix = String(node.value).includes("wp:");
-      const isSingleLineBlock = String(node.value).endsWith("/-->");
-      const isWpEndBlock = String(node.value).startsWith("<!-- /wp:");
-      // wp:プレフィックスを持つ、node.typeがcomment、単行のwpブロックでない
-      if (hasWpPrefix && node.type === "comment" && !isSingleLineBlock) {
-        // 後のprint処理をwp閉じタグまでスキップさせるための準備
-        isInWpBlock = true;
-        if (isWpEndBlock) {
-          isInWpBlock = false;
-          return defaultPrint();
-        }
-
-        return defaultPrint();
-        // pendingDocs.push(defaultPrint);
-        // return "";
-      }
-
-      if (isInWpBlock) {
-        return defaultPrint();
-        // console.log(node.type, node.value, node);
-        // pendingDocs.push(defaultPrint);
-        // return "";
       }
 
       return defaultPrint();

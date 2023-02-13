@@ -364,7 +364,7 @@ var parsers = {
   }
 };
 var htmlPrinterBuiltInPrettier;
-var isInWpBlock = false;
+var preprocessOptions;
 var printers = {
   "custom-html": {
     // ここら辺の型定義が崩壊しているが、preprocessの方もoptions.plugins経由でアクセスできるようで、かなりハック的ではあるものの一応動きはする
@@ -374,6 +374,7 @@ var printers = {
         // @ts-ignore
         (plugin) => plugin.printers && plugin.printers.html
       ).printers.html;
+      preprocessOptions = options2;
       if (htmlPrinterBuiltInPrettier.preprocess === void 0)
         return ast;
       return htmlPrinterBuiltInPrettier.preprocess(ast, options2);
@@ -385,37 +386,40 @@ var printers = {
         if (node.root === void 0) {
           return `<!-- ${node.value} /-->`;
         }
-        const astPath = new AstPath_default(node.root);
+        const adjustAst = htmlPrinterBuiltInPrettier.preprocess(
+          node.root,
+          preprocessOptions
+        );
+        const astPath = new AstPath_default(adjustAst);
         const customPrint = (astPath2) => {
-          const node2 = astPath2.getValue();
-          console.log(node2.type, astPath2);
-          return htmlPrinterBuiltInPrettier.print(
-            astPath2,
-            options2,
-            customPrint
-          );
+          const childNode = astPath2.map((childPath) => {
+            const node2 = childPath.getValue();
+            if (node2.type === "element") {
+              return group([
+                `<${node2.name}>`,
+                breakParent,
+                indent([line, group(childPath.call(customPrint, "children"))]),
+                line,
+                `</${node2.name}>`
+              ]);
+            }
+            if (node2.children && node2.children.length !== 0) {
+              return group(childPath.call(customPrint, "children"));
+            }
+            if (node2.type === "comment") {
+              return group([line, "<!--", node2.value, "-->", hardline]);
+            }
+            return group([node2.value]);
+          });
+          return childNode;
         };
-        const childrenDocs = customPrint(astPath);
+        const childrenDocs = astPath.call(customPrint, "children");
         return group([
           `<!-- ${node.value} -->`,
           indent([softline, childrenDocs]),
           softline,
           `<!-- /${node.value} -->`
         ]);
-      }
-      const hasWpPrefix = String(node.value).includes("wp:");
-      const isSingleLineBlock = String(node.value).endsWith("/-->");
-      const isWpEndBlock = String(node.value).startsWith("<!-- /wp:");
-      if (hasWpPrefix && node.type === "comment" && !isSingleLineBlock) {
-        isInWpBlock = true;
-        if (isWpEndBlock) {
-          isInWpBlock = false;
-          return defaultPrint();
-        }
-        return defaultPrint();
-      }
-      if (isInWpBlock) {
-        return defaultPrint();
       }
       return defaultPrint();
     },
