@@ -1,8 +1,13 @@
 {
   "name": "prettier-plugin-wp-block-html",
   "version": "0.1.0",
-  "description": "Prettier plugin for HTML in WordPress Block Theme.",
-  "keywords": [],
+  "description": "A Prettier plugin for HTML in WordPress Block Theme.",
+  "keywords": [
+    "prettier-plugin",
+    "prettier",
+    "wordpress",
+    "html"
+  ],
   "author": "Nao Komura",
   "license": "MIT",
   "packageManager": "npm@9.4.0",
