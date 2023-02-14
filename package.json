@@ -1,6 +1,6 @@
 {
   "name": "prettier-plugin-wp-block-html",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A Prettier plugin for HTML in WordPress Block Theme.",
   "keywords": [
     "prettier-plugin",
@@ -20,6 +20,7 @@
     "url": "https://github.com/co6x0/prettier-plugin-wp-block-html"
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
     "format": "prettier --write ./test/test.html --plugin ./dist",
     "test": "node ./test/prettier.js"
