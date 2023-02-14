@@ -1,3 +1,6 @@
+// This code is quoted from Prettier
+// https://github.com/prettier/prettier/blob/cf409fe6a458d080ed7f673a7347e00ec3c0b405/src/common/ast-path.js
+
 "use strict";
 const getLast = (arr) => arr[arr.length - 1];
 

@@ -1,19 +1,17 @@
 {
   "name": "prettier-plugin-wp-block-html",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Prettier plugin for HTML in WordPress Block Theme.",
+  "keywords": [],
+  "author": "Nao Komura",
+  "license": "MIT",
   "packageManager": "npm@9.4.0",
   "main": "index.js",
   "scripts": {
     "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
-    "build-v2": "esbuild ./src/v2/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
-    "prettier": "node ./test/prettier.js",
-    "format": "prettier --write ./test/test.html --parser custom-html --plugin ./dist",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "format": "prettier --write ./test/test.html --plugin ./dist",
+    "test": "node ./test/prettier.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@types/node": "^18.11.18",
     "@types/prettier": "^2.7.2",

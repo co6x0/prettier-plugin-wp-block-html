@@ -27,7 +27,7 @@ World.</p>
 `;
 
 const result = prettier.format(code, {
-  parser: "custom-html",
+  parser: "html",
   plugins: ["./dist"], // Relative path of root directory
 });
 

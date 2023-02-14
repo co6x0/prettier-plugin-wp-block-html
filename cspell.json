@@ -1,0 +1,11 @@
+{
+  "version": "0.2",
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/master/cspell.schema.json",
+  "words": [
+    "hardline",
+    "Komura",
+    "outfile",
+    "softline",
+    "wpblock"
+  ]
+}

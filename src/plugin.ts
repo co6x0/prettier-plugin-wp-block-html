@@ -1,136 +1,133 @@
+import type { Parser, Printer, SupportLanguage, AST, AstPath } from "prettier";
 import { parsers as PrettierCoreParsers } from "prettier/parser-html";
 import { builders } from "prettier/doc";
-import type {
-  Parser,
-  Printer,
-  SupportLanguage,
-  AST,
-  Doc,
-  AstPath,
-} from "prettier";
-import GenAstPath from "./common/AstPath";
-import { getTextsInWpBlock } from "./getTextsInWpBlock";
-import { traverseAstIncludedWpBlock } from "./traverseAstIncludedWpBlock";
+const { group, indent } = builders;
 
-const { group, indent, line, softline, hardline, breakParent } = builders;
+// AstPath.getValue()の返り値
+type Node = Record<string, any>;
+// prettier 2.8.3にはなぜかPrinterにpreprocessが定義されていない
+// Ref: https://github.com/prettier/prettier/issues/12683
+type CorrectPrinterType = Printer & {
+  preprocess: (ast: AST, options: Record<string, any>) => AST;
+};
 
 export const languages: Partial<SupportLanguage>[] = [
   {
-    name: "custom-html",
-    parsers: ["custom-html"],
+    name: "wp-block-html",
+    parsers: ["html"],
   },
 ];
 
 const HtmlParser = PrettierCoreParsers.html;
-
-let astInPreprocess: any;
 export const parsers: Record<string, Parser> = {
-  "custom-html": {
+  html: {
     ...HtmlParser,
-    astFormat: "custom-html",
-    preprocess: (text, options) => {
-      const ast = HtmlParser.parse(text, { html: HtmlParser }, options);
-      const astChildren = [...ast.children];
-      astInPreprocess = ast;
-      astInPreprocess.type = ast.type;
-      astInPreprocess.sourceSpan = { ...ast.sourceSpan };
-
-      // parseの段階でwpブロックを見つけ出し、その範囲のtextだけをparseする。そして、それをcustomNode.rootに加える
-      const textsInWpBlock = getTextsInWpBlock(text);
-      const astsInsideWpBlock = textsInWpBlock.map((text) => {
-        if (!text) return;
-        return HtmlParser.parse(text, { html: HtmlParser }, options);
-      });
-
-      const result = traverseAstIncludedWpBlock(astChildren, astsInsideWpBlock);
-      astInPreprocess.children = result;
-
-      return text;
-    },
-    parse: (text, parsers, options) => {
-      return astInPreprocess;
-    },
+    astFormat: "wp-block-html",
   },
 };
 
-// prettier 2.8.3にはなぜかPrinterにpreprocessが定義されていない
-// Ref: https://github.com/prettier/prettier/issues/12683
-type CorrectPrinterType = Printer & {
-  preprocess: (ast: AST, options: object) => AST;
-};
+// printer.print内で使用する
 let htmlPrinterBuiltInPrettier: CorrectPrinterType;
-let isInWpBlock: boolean = false;
-let pendingDocs: Doc[] = [];
-let preprocessOptions: object;
+const indentByWpBlock = {
+  level: 0,
+  increase: () => indentByWpBlock.level++,
+  decrease: () => indentByWpBlock.level--,
+  levelToSpace: () => {
+    const countOfSpace = indentByWpBlock.level * 2;
+    const indentSpaces: string = "".padEnd(countOfSpace, " ");
+    return indentSpaces;
+  },
+};
+let increaseIndentBlockParent: any;
+let decreaseIndentBlockParent: any;
 
 // 以下のファイルがexportしているメソッドを持たせる
-// Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
+// Ref: https://github.com/prettier/prettier/blob/cf409fe6a458d080ed7f673a7347e00ec3c0b405/src/language-html/printer-html.js
 export const printers: Record<string, CorrectPrinterType> = {
-  "custom-html": {
-    // 全体的に型定義が雑になっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、かなりハック的ではあるものの一応動きはする
+  "wp-block-html": {
+    // 全体的に型定義が怪しくなっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、ハック的ではあるものの意図した動作はする
     // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
     preprocess: (ast, options) => {
-      // @ts-ignore
+      if (!("plugins" in options)) return ast;
       htmlPrinterBuiltInPrettier = options.plugins.find(
-        // @ts-ignore
-        (plugin) => plugin.printers && plugin.printers.html
+        (plugin: any) => plugin.printers && plugin.printers.html
       ).printers.html;
-      preprocessOptions = options;
       if (htmlPrinterBuiltInPrettier.preprocess === undefined) return ast;
       return htmlPrinterBuiltInPrettier.preprocess(ast, options);
     },
-    print: (path, options, print) => {
+    print: (path: AstPath<Node>, options, print) => {
       const defaultPrint = () =>
         htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
 
-      if (node.type === "wpblock") {
-        if (node.root === undefined) {
-          return `<!-- ${node.value} /-->`;
+      if (indentByWpBlock.level !== 0 && node.type === "element") {
+        if (node.parent.sourceSpan !== increaseIndentBlockParent.sourceSpan) {
+          indentByWpBlock.decrease();
+          decreaseIndentBlockParent = node.parent;
         }
-
-        const adjustAst = htmlPrinterBuiltInPrettier.preprocess(
-          node.root,
-          preprocessOptions
-        );
-        const astPath = new GenAstPath(adjustAst);
-
-        // 実質HTMLPrinterの再発明になるので、この設計方針は間違えているかもしれない（ここだけではなくコード全体に対して）
-        // 本プラグインの前提条件は変わってしまうが、PrettierのHTMLPrinterのコードをフォークしてカスタマイズした方が良さそうなのは確か
-        const customPrint = (astPath: AstPath) => {
-          const childNode = astPath.map((childPath) => {
-            const node = childPath.getValue() as any;
-
-            if (node.type === "element") {
-              return group([
-                `<${node.name}>`,
-                breakParent,
-                indent([line, group(childPath.call(customPrint, "children"))]),
-                line,
-                `</${node.name}>`,
-              ]);
-            }
-            if (node.children && node.children.length !== 0) {
-              return group(childPath.call(customPrint, "children"));
-            }
-            if (node.type === "comment") {
-              return group([line, "<!--", node.value, "-->", hardline]);
-            }
-            return group([node.value]);
-          });
-          return childNode;
-        };
-        const childrenDocs = astPath.call(customPrint, "children");
-
-        return group([
-          `<!-- ${node.value} -->`,
-          indent([softline, childrenDocs]),
-          softline,
-          `<!-- /${node.value} -->`,
-        ]);
       }
 
-      return defaultPrint();
+      if (node.value) {
+        const valueText = node.value as string;
+        if (node.type !== "comment" || !valueText.includes("wp:")) {
+          return defaultPrint();
+        }
+
+        const trimmedValue = valueText.trim();
+        // Single line wp: block
+        if (trimmedValue.endsWith("/")) {
+          return group([
+            indentByWpBlock.levelToSpace(),
+            "<!-- ",
+            trimmedValue.slice(0, -1).trim(),
+            " /-->",
+          ]);
+        }
+        // Multi line wp: block end
+        if (trimmedValue.startsWith("/")) {
+          indentByWpBlock.decrease();
+          const endBlock = group([
+            indentByWpBlock.levelToSpace(),
+            "<!-- /",
+            trimmedValue.slice(1, trimmedValue.length).trim(),
+            " -->",
+          ]);
+          return endBlock;
+        }
+        // Multi line wp: block start
+        const startBlock = group([
+          indentByWpBlock.levelToSpace(),
+          "<!-- ",
+          trimmedValue,
+          " -->",
+        ]);
+        indentByWpBlock.increase();
+        increaseIndentBlockParent = node.parent;
+        return startBlock;
+      }
+
+      if (indentByWpBlock.level === 0) return defaultPrint();
+
+      // ここでdefaultPrintが発火するので、print()が始まる
+      let docWithCustomIndent = defaultPrint();
+      // print()冒頭の条件分岐によってlevelが0になっているとき、以下のfor処理が終わっている
+      // この再帰処理では子から処理が進んでいくので、最後に親をうまく処理するための形となっている
+      if (indentByWpBlock.level === 0 && node.type === "element") {
+        if (node.parent.sourceSpan !== decreaseIndentBlockParent.sourceSpan) {
+          indentByWpBlock.increase();
+          decreaseIndentBlockParent = node.parent;
+        }
+      }
+
+      for (let i = 0; i < indentByWpBlock.level; i++) {
+        docWithCustomIndent = indent([group([docWithCustomIndent])]);
+      }
+
+      docWithCustomIndent = group([
+        indentByWpBlock.levelToSpace(),
+        docWithCustomIndent,
+      ]);
+      return docWithCustomIndent;
     },
     insertPragma: (text) => {
       if (htmlPrinterBuiltInPrettier.insertPragma === undefined) return "";
