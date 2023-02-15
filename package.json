@@ -22,7 +22,7 @@
   "scripts": {
     "prepare": "npm run build",
     "build": "esbuild ./src/plugin.ts --bundle --platform=node --packages=external --outfile=./dist/index.js",
-    "format": "prettier --write ./test/examples/* --plugin ./dist",
+    "format": "prettier --write ./test/examples/*.html --plugin ./dist",
     "test": "node ./test/prettier.js"
   },
   "devDependencies": {

@@ -48,6 +48,11 @@ export const printers: Record<string, CorrectPrinterType> = {
     // 全体的に型定義が怪しくなっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、ハック的ではあるものの意図した動作はする
     // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
     preprocess: (ast, options) => {
+      // globパターンを使用したコマンドを打った時など、連続でフォーマットする場合に前回の処理に使用したデータが残っていることがあるのでリセットする
+      indentByWpBlock.level = 0;
+      increaseIndentBlockParent = undefined;
+      decreaseIndentBlockParent = undefined;
+
       if (!("plugins" in options)) return ast;
       htmlPrinterBuiltInPrettier = options.plugins.find(
         (plugin: any) => plugin.printers && plugin.printers.html
@@ -59,6 +64,8 @@ export const printers: Record<string, CorrectPrinterType> = {
       const defaultPrint = () =>
         htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
+
+      console.log(node);
 
       if (indentByWpBlock.level !== 0) {
         if (
