@@ -60,17 +60,21 @@ export const printers: Record<string, CorrectPrinterType> = {
         htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
 
-      if (indentByWpBlock.level !== 0 && node.type === "element") {
-        if (node.parent.sourceSpan !== increaseIndentBlockParent.sourceSpan) {
+      if (indentByWpBlock.level !== 0) {
+        if (
+          // HTMLタグの属性が複数個あると改行される場合があり、そのときのparentはその属性を持つ要素になるので、この処理では対象外とする
+          node.type !== "attribute" &&
+          node.parent.sourceSpan !== increaseIndentBlockParent.sourceSpan
+        ) {
           indentByWpBlock.decrease();
           decreaseIndentBlockParent = node.parent;
         }
       }
 
-      if (node.value) {
+      if (node.type === "comment" && node.value) {
         const valueText = node.value as string;
-        if (node.type !== "comment" || !valueText.includes("wp:")) {
-          return defaultPrint();
+        if (!valueText.includes("wp:")) {
+          return group([indentByWpBlock.levelToSpace(), defaultPrint()]);
         }
 
         const trimmedValue = valueText.trim();
@@ -106,7 +110,10 @@ export const printers: Record<string, CorrectPrinterType> = {
         return startBlock;
       }
 
-      if (indentByWpBlock.level === 0) return defaultPrint();
+      // levelが0でないときでも、typeがattributeのノードはそれ以上のインデントが必要ないのでdefaultPrintで返す
+      if (indentByWpBlock.level === 0 || node.type === "attribute") {
+        return defaultPrint();
+      }
 
       // ここでdefaultPrintが発火するので、print()が始まる
       let docWithCustomIndent = defaultPrint();
