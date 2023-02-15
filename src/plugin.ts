@@ -40,6 +40,21 @@ const indentByWpBlock = {
 };
 let increaseIndentBlockParent: any;
 let decreaseIndentBlockParent: any;
+// 他のノードに関係しない独立した親を持つノードタイプ
+const isolatedParentTypes = ["attribute", "text"];
+const hasIsolatedParentType = (type: string) => {
+  return isolatedParentTypes.includes(type);
+};
+const isWpBlock = (type: string, value?: string) => {
+  return type === "comment" && value && value.includes("wp:");
+};
+const isWpEndBlock = (type: string, value?: string) => {
+  if (type !== "comment" || !value || !value.includes("wp:")) return false;
+  const trimmedValue = value.trim();
+  return trimmedValue.startsWith("/");
+};
+// 要素間のwpブロックの数
+const countsWpBlockBetweenElement: number[] = [];
 
 // 以下のファイルがexportしているメソッドを持たせる
 // Ref: https://github.com/prettier/prettier/blob/cf409fe6a458d080ed7f673a7347e00ec3c0b405/src/language-html/printer-html.js
@@ -65,16 +80,19 @@ export const printers: Record<string, CorrectPrinterType> = {
         htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
 
-      console.log(node);
-
-      if (indentByWpBlock.level !== 0) {
-        if (
-          // HTMLタグの属性が複数個あると改行される場合があり、そのときのparentはその属性を持つ要素になるので、この処理では対象外とする
-          node.type !== "attribute" &&
-          node.parent.sourceSpan !== increaseIndentBlockParent.sourceSpan
-        ) {
-          indentByWpBlock.decrease();
-          decreaseIndentBlockParent = node.parent;
+      if (indentByWpBlock.level !== 0 && !hasIsolatedParentType(node.type)) {
+        if (node.parent.sourceSpan === increaseIndentBlockParent.sourceSpan) {
+          if (!isWpBlock(node.type, node.value)) {
+            countsWpBlockBetweenElement.push(indentByWpBlock.level);
+          }
+        } else {
+          if (!isWpEndBlock(node.type, node.value)) {
+            indentByWpBlock.decrease();
+            decreaseIndentBlockParent = node.parent;
+          }
+          if (!isWpBlock(node.type, node.value)) {
+            return defaultPrint();
+          }
         }
       }
 
@@ -97,6 +115,7 @@ export const printers: Record<string, CorrectPrinterType> = {
         // Multi line wp: block end
         if (trimmedValue.startsWith("/")) {
           indentByWpBlock.decrease();
+          decreaseIndentBlockParent = node.parent;
           const endBlock = group([
             indentByWpBlock.levelToSpace(),
             "<!-- /",
@@ -117,8 +136,7 @@ export const printers: Record<string, CorrectPrinterType> = {
         return startBlock;
       }
 
-      // levelが0でないときでも、typeがattributeのノードはそれ以上のインデントが必要ないのでdefaultPrintで返す
-      if (indentByWpBlock.level === 0 || node.type === "attribute") {
+      if (indentByWpBlock.level === 0 || hasIsolatedParentType(node.type)) {
         return defaultPrint();
       }
 
@@ -126,10 +144,12 @@ export const printers: Record<string, CorrectPrinterType> = {
       let docWithCustomIndent = defaultPrint();
       // print()冒頭の条件分岐によってlevelが0になっているとき、以下のfor処理が終わっている
       // この再帰処理では子から処理が進んでいくので、最後に親をうまく処理するための形となっている
-      if (indentByWpBlock.level === 0 && node.type === "element") {
-        if (node.parent.sourceSpan !== decreaseIndentBlockParent.sourceSpan) {
+      if (node.parent.sourceSpan !== decreaseIndentBlockParent.sourceSpan) {
+        const latestCount = countsWpBlockBetweenElement.pop();
+        if (!latestCount) throw new Error("latestCount is undefined");
+
+        for (let i = 0; i < latestCount; i++) {
           indentByWpBlock.increase();
-          decreaseIndentBlockParent = node.parent;
         }
       }
 
