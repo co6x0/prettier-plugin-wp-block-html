@@ -140,19 +140,20 @@ export const printers: Record<string, CorrectPrinterType> = {
         return defaultPrint();
       }
 
-      // ここでdefaultPrintが発火するので、print()が始まる
+      // ここでdefaultPrintが発火し、childrenがなくなるまで print() の再帰処理が回りはじめる
+      // この文以降の処理は上記の再帰処理が終わってから始まるが、別の print() 内でchildrenが無くなったときは先にそのノードが以降の処理を実行する
+      // そのため、これ以降の処理は一番ネストの深いノードから浅いノードに向かって実行される
       let docWithCustomIndent = defaultPrint();
-      // print()冒頭の条件分岐によってlevelが0になっているとき、以下のfor処理が終わっている
-      // この再帰処理では子から処理が進んでいくので、最後に親をうまく処理するための形となっている
-      if (node.parent.sourceSpan !== decreaseIndentBlockParent.sourceSpan) {
-        const latestCount = countsWpBlockBetweenElement.pop();
-        if (!latestCount) throw new Error("latestCount is undefined");
 
-        for (let i = 0; i < latestCount; i++) {
-          indentByWpBlock.increase();
-        }
+      const latestCount = countsWpBlockBetweenElement.pop();
+      if (!latestCount) throw new Error("latestCount is undefined");
+
+      indentByWpBlock.level = 0;
+      increaseIndentBlockParent = node.parent;
+
+      for (let i = 0; i < latestCount; i++) {
+        indentByWpBlock.increase();
       }
-
       for (let i = 0; i < indentByWpBlock.level; i++) {
         docWithCustomIndent = indent([group([docWithCustomIndent])]);
       }
