@@ -87,7 +87,7 @@ export const printers: Record<string, CorrectPrinterType> = {
           }
         } else {
           if (!isWpEndBlock(node.type, node.value)) {
-            indentByWpBlock.decrease();
+            indentByWpBlock.level = 0;
             decreaseIndentBlockParent = node.parent;
           }
           if (!isWpBlock(node.type, node.value)) {
