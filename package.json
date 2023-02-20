@@ -1,6 +1,6 @@
 {
   "name": "prettier-plugin-wp-block-html",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A Prettier plugin for HTML in WordPress Block Theme.",
   "keywords": [
     "prettier-plugin",
