@@ -1,17 +1,10 @@
-import type { Parser, Printer, SupportLanguage, AST, AstPath } from "prettier";
-import { parsers as PrettierCoreParsers } from "prettier/parser-html";
+// import * as prettier from "prettier";
+import type { Printer, SupportLanguage, AstPath, Plugin } from "prettier";
+import { parsers as PrettierCoreParsers } from "prettier/plugins/html";
 import { builders } from "prettier/doc";
 const { group, indent } = builders;
 
-// AstPath.getValue()の返り値
-type Node = Record<string, any>;
-// prettier 2.8.3にはなぜかPrinterにpreprocessが定義されていない
-// Ref: https://github.com/prettier/prettier/issues/12683
-type CorrectPrinterType = Printer & {
-  preprocess: (ast: AST, options: Record<string, any>) => AST;
-};
-
-export const languages: Partial<SupportLanguage>[] = [
+export const languages: SupportLanguage[] = [
   {
     name: "wp-block-html",
     parsers: ["html"],
@@ -19,7 +12,7 @@ export const languages: Partial<SupportLanguage>[] = [
 ];
 
 const HtmlParser = PrettierCoreParsers.html;
-export const parsers: Record<string, Parser> = {
+export const parsers: Plugin["parsers"] = {
   html: {
     ...HtmlParser,
     astFormat: "wp-block-html",
@@ -27,7 +20,7 @@ export const parsers: Record<string, Parser> = {
 };
 
 // printer.print内で使用する
-let htmlPrinterBuiltInPrettier: CorrectPrinterType;
+let htmlPrinterBuiltInPrettier: Printer;
 const indentByWpBlock = {
   level: 0,
   increase: () => indentByWpBlock.level++,
@@ -57,25 +50,37 @@ const isWpEndBlock = (type: string, value?: string) => {
 const countsWpBlockBetweenElement: number[] = [];
 
 // 以下のファイルがexportしているメソッドを持たせる
-// Ref: https://github.com/prettier/prettier/blob/cf409fe6a458d080ed7f673a7347e00ec3c0b405/src/language-html/printer-html.js
-export const printers: Record<string, CorrectPrinterType> = {
+// Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
+export const printers: Record<string, Printer> = {
   "wp-block-html": {
     // 全体的に型定義が怪しくなっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、ハック的ではあるものの意図した動作はする
     // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
-    preprocess: (ast, options) => {
+    preprocess: async (ast, options) => {
       // globパターンを使用したコマンドを打った時など、連続でフォーマットする場合に前回の処理に使用したデータが残っていることがあるのでリセットする
       indentByWpBlock.level = 0;
       increaseIndentBlockParent = undefined;
       decreaseIndentBlockParent = undefined;
 
       if (!("plugins" in options)) return ast;
-      htmlPrinterBuiltInPrettier = options.plugins.find(
-        (plugin: any) => plugin.printers && plugin.printers.html
-      ).printers.html;
+
+      if (!htmlPrinterBuiltInPrettier) {
+        const plugin = options.plugins.find((plugin) => {
+          if (typeof plugin === "string") return false;
+          if (!plugin.printers) return false;
+          if (!plugin.printers.html) return false;
+          return true;
+        }) as Plugin<any>;
+
+        // @ts-ignore .html is Promise<Printer>
+        const printer = (await plugin.printers!.html()) as Printer;
+        htmlPrinterBuiltInPrettier = printer;
+      }
+
       if (htmlPrinterBuiltInPrettier.preprocess === undefined) return ast;
       return htmlPrinterBuiltInPrettier.preprocess(ast, options);
     },
-    print: (path: AstPath<Node>, options, print) => {
+    print: (path: AstPath["node"], options, print) => {
+      htmlPrinterBuiltInPrettier;
       const defaultPrint = () =>
         htmlPrinterBuiltInPrettier.print(path, options, print);
       const node = path.getValue();
@@ -173,9 +178,9 @@ export const printers: Record<string, CorrectPrinterType> = {
         return undefined;
       return htmlPrinterBuiltInPrettier.massageAstNode(node, newNode, parent);
     },
-    embed: (path, print, textToDoc, options) => {
+    embed: (path, options) => {
       if (htmlPrinterBuiltInPrettier.embed === undefined) return null;
-      return htmlPrinterBuiltInPrettier.embed(path, print, textToDoc, options);
+      return htmlPrinterBuiltInPrettier.embed(path, options);
     },
   },
 };
