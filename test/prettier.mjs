@@ -1,5 +1,5 @@
 import * as prettier from "prettier";
-import * as plugin from "../dist/index.esm.js";
+import * as plugin from "../dist/index.mjs";
 
 const code = `
 <article>

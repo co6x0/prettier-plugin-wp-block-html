@@ -1,5 +1,5 @@
 const prettier = require("prettier");
-const plugin = require("../dist/index.cjs.js");
+const plugin = import("../dist/index.mjs");
 
 const code = `
 <article>

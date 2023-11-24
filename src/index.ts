@@ -2,6 +2,8 @@
 import type { Printer, SupportLanguage, AstPath, Plugin } from "prettier";
 import { parsers as PrettierCoreParsers } from "prettier/plugins/html";
 import { builders } from "prettier/doc";
+import { loadIfExistsESM } from "./plugins.js";
+
 const { group, indent } = builders;
 
 export const languages: SupportLanguage[] = [
@@ -11,10 +13,14 @@ export const languages: SupportLanguage[] = [
   },
 ];
 
-const HtmlParser = PrettierCoreParsers.html;
+const htmlParser = PrettierCoreParsers.html;
+const tailwindPlugin = await loadIfExistsESM("prettier-plugin-tailwindcss");
+const tailwindHtmlParser = tailwindPlugin.parsers?.html;
+
 export const parsers: Plugin["parsers"] = {
   html: {
-    ...HtmlParser,
+    ...htmlParser,
+    ...tailwindHtmlParser,
     astFormat: "wp-block-html",
   },
 };
