@@ -32,3 +32,16 @@ npx prettier --write ./parts/header.html --plugin prettier-plugin-wp-block-html
 ```
 
 For more information, please refer to [Prettier documentation](https://prettier.io/docs/en/plugins.html#using-plugins).
+
+## Using with other Prettier plugins
+
+This plugin uses specific Prettier APIs, which may conflict with other plugins that use similar APIs.
+
+To avoid this problem, consider the order of the `plugins` in the Prettier configuration file. Now you can use this plugin with `prettier-plugin-tailwindcss`.
+
+```json
+// .prettierrc.json
+{
+  "plugins": ["prettier-plugin-tailwindcss", "prettier-plugin-wp-block-html"]
+}
+```
