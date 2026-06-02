@@ -1,6 +1,8 @@
-// import * as prettier from "prettier";
 import type { Printer, SupportLanguage, AstPath, Plugin } from "prettier";
-import { parsers as PrettierCoreParsers } from "prettier/plugins/html";
+import {
+  parsers as prettierHtmlParsers,
+  printers as prettierHtmlPrinters,
+} from "prettier/plugins/html";
 import { builders } from "prettier/doc";
 import { loadIfExistsESM } from "./plugins.js";
 
@@ -8,29 +10,35 @@ const { group, indent } = builders;
 
 export const languages: SupportLanguage[] = [
   {
-    name: "wp-block-html",
-    parsers: ["html"],
+    name: "WordPress Block HTML",
+    parsers: ["wp-block-html"],
+    extensions: [".html"],
+    vscodeLanguageIds: ["html"],
   },
 ];
 
-const htmlParser = PrettierCoreParsers.html;
+const htmlParser = prettierHtmlParsers.html;
+const htmlPrinter = prettierHtmlPrinters.html as Printer;
 const tailwindPlugin = await loadIfExistsESM("prettier-plugin-tailwindcss");
 const tailwindHtmlParser = tailwindPlugin.parsers?.html;
 
-export const parsers: Plugin["parsers"] = {
-  html: {
-    ...htmlParser,
-    ...tailwindHtmlParser,
-    astFormat: "wp-block-html",
-  },
+const wpBlockHtmlParser = {
+  ...htmlParser,
+  ...tailwindHtmlParser,
+  astFormat: "wp-block-html",
 };
 
-// printer.print内で使用する
-let htmlPrinterBuiltInPrettier: Printer;
+export const parsers: Plugin["parsers"] = {
+  "wp-block-html": wpBlockHtmlParser,
+  html: wpBlockHtmlParser,
+};
+
 const indentByWpBlock = {
   level: 0,
   increase: () => indentByWpBlock.level++,
-  decrease: () => indentByWpBlock.level--,
+  decrease: () => {
+    indentByWpBlock.level = Math.max(0, indentByWpBlock.level - 1);
+  },
   levelToSpace: () => {
     const countOfSpace = indentByWpBlock.level * 2;
     const indentSpaces: string = "".padEnd(countOfSpace, " ");
@@ -41,73 +49,63 @@ let increaseIndentBlockParent: any;
 let decreaseIndentBlockParent: any;
 // 他のノードに関係しない独立した親を持つノードタイプ
 const isolatedParentTypes = ["attribute", "text"];
-const hasIsolatedParentType = (type: string) => {
-  return isolatedParentTypes.includes(type);
+const getNodeKind = (node: any) => {
+  return node?.kind ?? node?.type;
 };
-const isWpBlock = (type: string, value?: string) => {
-  return type === "comment" && value && value.includes("wp:");
+const hasIsolatedParentType = (node: any) => {
+  return isolatedParentTypes.includes(getNodeKind(node));
 };
-const isWpEndBlock = (type: string, value?: string) => {
-  if (type !== "comment" || !value || !value.includes("wp:")) return false;
-  const trimmedValue = value.trim();
+const isWpBlock = (node: any) => {
+  return getNodeKind(node) === "comment" && node.value?.includes("wp:");
+};
+const isWpEndBlock = (node: any) => {
+  if (!isWpBlock(node)) return false;
+  const trimmedValue = node.value.trim();
   return trimmedValue.startsWith("/");
 };
 // 要素間のwpブロックの数
 const countsWpBlockBetweenElement: number[] = [];
+const resetWpBlockIndent = () => {
+  indentByWpBlock.level = 0;
+  increaseIndentBlockParent = undefined;
+  decreaseIndentBlockParent = undefined;
+  countsWpBlockBetweenElement.length = 0;
+};
 
 // 以下のファイルがexportしているメソッドを持たせる
 // Ref: https://github.com/prettier/prettier/blob/main/src/language-html/printer-html.js
 export const printers: Record<string, Printer> = {
   "wp-block-html": {
-    // 全体的に型定義が怪しくなっているが、preprocessの方もoptions.plugins経由でアクセスできるようで、ハック的ではあるものの意図した動作はする
-    // Ref: https://github.com/prettier/prettier/issues/8195#issuecomment-622591656
     preprocess: async (ast, options) => {
       // globパターンを使用したコマンドを打った時など、連続でフォーマットする場合に前回の処理に使用したデータが残っていることがあるのでリセットする
-      indentByWpBlock.level = 0;
-      increaseIndentBlockParent = undefined;
-      decreaseIndentBlockParent = undefined;
+      resetWpBlockIndent();
 
-      if (!("plugins" in options)) return ast;
-
-      if (!htmlPrinterBuiltInPrettier) {
-        const plugin = options.plugins.find((plugin) => {
-          if (typeof plugin === "string") return false;
-          if (!plugin.printers) return false;
-          if (!plugin.printers.html) return false;
-          return true;
-        }) as Plugin<any>;
-
-        // @ts-ignore .html is Promise<Printer>
-        const printer = (await plugin.printers!.html()) as Printer;
-        htmlPrinterBuiltInPrettier = printer;
-      }
-
-      if (htmlPrinterBuiltInPrettier.preprocess === undefined) return ast;
-      return htmlPrinterBuiltInPrettier.preprocess(ast, options);
+      if (htmlPrinter.preprocess === undefined) return ast;
+      return htmlPrinter.preprocess(ast, options);
     },
-    print: (path: AstPath["node"], options, print) => {
-      htmlPrinterBuiltInPrettier;
-      const defaultPrint = () =>
-        htmlPrinterBuiltInPrettier.print(path, options, print);
+    print: (path: AstPath<any>, options, print) => {
+      const defaultPrint = () => htmlPrinter.print(path, options, print);
       const node = path.getValue();
 
-      if (indentByWpBlock.level !== 0 && !hasIsolatedParentType(node.type)) {
-        if (node.parent.sourceSpan === increaseIndentBlockParent.sourceSpan) {
-          if (!isWpBlock(node.type, node.value)) {
+      if (!node) return defaultPrint();
+
+      if (indentByWpBlock.level !== 0 && !hasIsolatedParentType(node)) {
+        if (node.parent?.sourceSpan === increaseIndentBlockParent?.sourceSpan) {
+          if (!isWpBlock(node)) {
             countsWpBlockBetweenElement.push(indentByWpBlock.level);
           }
         } else {
-          if (!isWpEndBlock(node.type, node.value)) {
+          if (!isWpEndBlock(node)) {
             indentByWpBlock.level = 0;
             decreaseIndentBlockParent = node.parent;
           }
-          if (!isWpBlock(node.type, node.value)) {
+          if (!isWpBlock(node)) {
             return defaultPrint();
           }
         }
       }
 
-      if (node.type === "comment" && node.value) {
+      if (getNodeKind(node) === "comment" && node.value) {
         const valueText = node.value as string;
         if (!valueText.includes("wp:")) {
           return group([indentByWpBlock.levelToSpace(), defaultPrint()]);
@@ -147,7 +145,7 @@ export const printers: Record<string, Printer> = {
         return startBlock;
       }
 
-      if (indentByWpBlock.level === 0 || hasIsolatedParentType(node.type)) {
+      if (indentByWpBlock.level === 0 || hasIsolatedParentType(node)) {
         return defaultPrint();
       }
 
@@ -157,7 +155,7 @@ export const printers: Record<string, Printer> = {
       let docWithCustomIndent = defaultPrint();
 
       const latestCount = countsWpBlockBetweenElement.pop();
-      if (!latestCount) throw new Error("latestCount is undefined");
+      if (!latestCount) return defaultPrint();
 
       indentByWpBlock.level = 0;
       increaseIndentBlockParent = node.parent;
@@ -176,18 +174,18 @@ export const printers: Record<string, Printer> = {
       return docWithCustomIndent;
     },
     insertPragma: (text) => {
-      if (htmlPrinterBuiltInPrettier.insertPragma === undefined) return "";
-      return htmlPrinterBuiltInPrettier.insertPragma(text);
+      if (htmlPrinter.insertPragma === undefined) return "";
+      return htmlPrinter.insertPragma(text);
     },
     massageAstNode: (node, newNode, parent) => {
-      if (htmlPrinterBuiltInPrettier.massageAstNode === undefined)
-        return undefined;
-      return htmlPrinterBuiltInPrettier.massageAstNode(node, newNode, parent);
+      if (htmlPrinter.massageAstNode === undefined) return undefined;
+      return htmlPrinter.massageAstNode(node, newNode, parent);
     },
     embed: (path, options) => {
-      if (htmlPrinterBuiltInPrettier.embed === undefined) return null;
-      return htmlPrinterBuiltInPrettier.embed(path, options);
+      if (htmlPrinter.embed === undefined) return null;
+      return htmlPrinter.embed(path, options);
     },
+    getVisitorKeys: htmlPrinter.getVisitorKeys,
   },
 };
 
