@@ -16,14 +16,15 @@ Install Prettier 3 and this plugin:
 npm install -D prettier prettier-plugin-wp-block-html
 ```
 
-Use the explicit `wp-block-html` parser for files that contain WordPress block comments:
+Use the explicit `wp-block-html` parser for files that contain WordPress block comments.
+For block themes, this usually means `parts`, `templates`, and `patterns`:
 
 ```json
 {
   "plugins": ["prettier-plugin-wp-block-html"],
   "overrides": [
     {
-      "files": ["synced-patterns/*.html"],
+      "files": ["parts/**/*.html", "templates/**/*.html", "patterns/**/*.html"],
       "options": {
         "parser": "wp-block-html"
       }
@@ -35,7 +36,7 @@ Use the explicit `wp-block-html` parser for files that contain WordPress block c
 You can also pass the parser on the command line:
 
 ```shell
-npx prettier --write ./synced-patterns/*.html --plugin prettier-plugin-wp-block-html --parser wp-block-html
+npx prettier --write "parts/**/*.html" "templates/**/*.html" "patterns/**/*.html" --plugin prettier-plugin-wp-block-html --parser wp-block-html
 ```
 
 For compatibility with existing setups, the plugin still exposes an `html` parser wrapper.
