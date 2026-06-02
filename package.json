@@ -10,6 +10,7 @@
   ],
   "author": "Nao Komura",
   "license": "MIT",
+  "type": "module",
   "packageManager": "npm@9.4.0",
   "main": "dist/index.mjs",
   "module": "dist/index.mjs",
@@ -22,16 +23,17 @@
   },
   "scripts": {
     "prepare": "npm run build",
-    "format": "prettier --write ./test/examples/*.html --plugin ./dist",
-    "dev": "esbuild ./src/index.js --bundle --platform=node --format=esm --outfile=./dist/index.mjs --watch",
-    "build": "esbuild ./src/index.js --bundle --platform=node --format=esm --outfile=./dist/index.mjs --minify",
+    "format": "prettier --write \"test/fixtures/*/output.html\" --plugin ./dist/index.mjs --parser wp-block-html",
+    "check": "prettier --check \"test/fixtures/*/output.html\" --plugin ./dist/index.mjs --parser wp-block-html",
+    "dev": "esbuild ./src/index.ts --bundle --platform=node --format=esm --outfile=./dist/index.mjs --watch",
+    "build": "esbuild ./src/index.ts --bundle --platform=node --format=esm --outfile=./dist/index.mjs --minify",
     "test": "node ./test/prettier.mjs"
   },
   "devDependencies": {
-    "@types/node": "^20.9.4",
-    "esbuild": "^0.19.7",
-    "prettier-plugin-tailwindcss": "^0.5.7",
-    "typescript": "^5.3.2"
+    "@types/node": "^25.9.1",
+    "esbuild": "^0.28.0",
+    "prettier-plugin-tailwindcss": "^0.8.0",
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "prettier-plugin-tailwindcss": "*"
@@ -42,6 +44,6 @@
     }
   },
   "dependencies": {
-    "prettier": "^3.1.0"
+    "prettier": "^3.8.3"
   }
 }

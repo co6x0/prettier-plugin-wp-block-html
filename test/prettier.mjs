@@ -1,40 +1,38 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import assert from "node:assert/strict";
 import * as prettier from "prettier";
 import * as plugin from "../dist/index.mjs";
 
-const code = `
-<article>
-<p><strong>Hello,</strong>
-World.</p>
-<!-- This is Comment! -->
-<img src="./foo.jpg" alt="test image">
-<!-- wp:site-title {"level":2}/ -->
-<p>Paragraph</p>
-<img src="./foo.jpg" alt="test image">
+const fixturesDir = new URL("./fixtures/", import.meta.url);
+const fixtureNames = await readdir(fixturesDir);
 
-<section>
-<!-- wp:group -->
-<p>P in wp:1</p>
-<div>
-<!-- comment -->
-<p>P in wp:2</p>
-  <!-- wp:group {"align":"full","style":{"spacing":{"padding":{"top":"2em","right":"2em","bottom":"2em","left":"2em"}}},"backgroundColor":"vivid-cyan-blue"} -->
-  <!-- wp:heading {"level":3,"style":{"color":{"text":"#ff7e7e"}}} -->
-  <p>P in wp:3</p>
-  <!-- /wp:heading -->
-  <!-- /wp:group -->
-</div>
-<!-- / wp:group -->
-</section>
-</article>
-`;
+for (const fixtureName of fixtureNames) {
+  const fixtureDir = new URL(`${fixtureName}/`, fixturesDir);
+  const input = await readFile(new URL("input.html", fixtureDir), "utf8");
+  const expected = await readFile(new URL("output.html", fixtureDir), "utf8");
 
-const main = async () => {
-  const result = await prettier.format(code, {
-    parser: "html",
+  const actual = await prettier.format(input, {
+    parser: "wp-block-html",
     plugins: [plugin],
   });
 
-  console.log(result);
-};
+  assert.equal(
+    actual,
+    expected,
+    `${join("test/fixtures", fixtureName)} did not match expected output`,
+  );
 
-main();
+  const secondPass = await prettier.format(actual, {
+    parser: "wp-block-html",
+    plugins: [plugin],
+  });
+
+  assert.equal(
+    secondPass,
+    actual,
+    `${join("test/fixtures", fixtureName)} is not idempotent`,
+  );
+}
+
+console.log(`Formatted ${fixtureNames.length} fixture(s).`);

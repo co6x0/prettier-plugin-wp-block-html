@@ -10,26 +10,35 @@ This plugin is currently in beta. It may return unexpected results.
 
 ## Usage
 
-In most cases, you can just install `prettier-plugin-wp-block-html` and start using it. The plugin will work automatically after installation.
+Install Prettier 3 and this plugin:
 
 ```shell
 npm install -D prettier prettier-plugin-wp-block-html
 ```
 
-If the plugin cannot be found automatically, you can load it as follows:
+Use the explicit `wp-block-html` parser for files that contain WordPress block comments:
 
-```javascript
-// prettier.config.js
-module.exports = {
-  plugins: ["prettier-plugin-wp-block-html"],
-};
+```json
+{
+  "plugins": ["prettier-plugin-wp-block-html"],
+  "overrides": [
+    {
+      "files": ["synced-patterns/*.html"],
+      "options": {
+        "parser": "wp-block-html"
+      }
+    }
+  ]
+}
 ```
 
-Alternatively:
+You can also pass the parser on the command line:
 
 ```shell
-npx prettier --write ./parts/header.html --plugin prettier-plugin-wp-block-html
+npx prettier --write ./synced-patterns/*.html --plugin prettier-plugin-wp-block-html --parser wp-block-html
 ```
+
+For compatibility with existing setups, the plugin still exposes an `html` parser wrapper.
 
 For more information, please refer to [Prettier documentation](https://prettier.io/docs/en/plugins.html#using-plugins).
 
