@@ -4,10 +4,6 @@ A [Prettier](https://prettier.io/) plugin for HTML in WordPress Block Theme.
 
 This plugin formats unique HTML code including [Block markups](https://developer.wordpress.org/themes/block-themes/templates-and-template-parts/) in the WordPress block theme.
 
-## ⚠️ Warning
-
-This plugin is currently in beta. It may return unexpected results.
-
 ## Usage
 
 Install Prettier 3 and this plugin:
