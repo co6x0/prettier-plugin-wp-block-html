@@ -20,7 +20,11 @@ export const languages: SupportLanguage[] = [
 const htmlParser = prettierHtmlParsers.html;
 const htmlPrinter = prettierHtmlPrinters.html as Printer;
 const tailwindPlugin = await loadIfExistsESM("prettier-plugin-tailwindcss");
-const tailwindHtmlParser = tailwindPlugin.parsers?.html;
+const tailwindHtmlParserEntry = tailwindPlugin.parsers?.html as unknown;
+const tailwindHtmlParser =
+  typeof tailwindHtmlParserEntry === "function"
+    ? await tailwindHtmlParserEntry()
+    : tailwindHtmlParserEntry;
 
 const wpBlockHtmlParser = {
   ...htmlParser,
